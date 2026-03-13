@@ -426,8 +426,12 @@ def build_improve_prompt(
 
         try:
             messages, metadata = SessionLoader.load_session(session_dir)
-        except ValueError:
-            # Skip corrupted or invalid sessions
+        except ValueError as exc:
+            logger.warning(
+                "Skipping corrupted session at %s",
+                session_dir,
+                exc_info=exc,
+            )
             continue
 
         try:

@@ -15,6 +15,7 @@ from vibe.core.session.improve_prompt import (
     SessionAnalysis,
     build_improve_prompt,
 )
+from vibe.core.session.session_loader import SessionLoader
 from vibe.core.types import FunctionCall, LLMMessage, Role, ToolCall
 
 
@@ -199,6 +200,50 @@ def test_build_improve_prompt_ignores_legacy_improve_turns(
     assert "Investigate slow test startup" in prompt
     assert "old /improve output" not in prompt
     assert "legacy-improve" not in prompt
+
+
+def test_build_improve_prompt_logs_corrupted_sessions(
+    session_config: SessionLoggingConfig,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    session_root = Path(session_config.save_dir)
+    create_session(
+        session_root,
+        "healthy-session",
+        user_prompt="Investigate flaky session handling",
+        assistant_text="I will inspect the session analyzer first.",
+        cwd="/repo/healthy",
+    )
+    time.sleep(0.01)
+    broken_session = create_session(
+        session_root,
+        "broken-session",
+        user_prompt="This session should log a load failure",
+        assistant_text="I will inspect the session analyzer first.",
+        cwd="/repo/broken",
+    )
+
+    original_load_session = SessionLoader.load_session
+
+    def fake_load_session(
+        session_dir: Path,
+    ) -> tuple[list[LLMMessage], dict[str, object]]:
+        if session_dir == broken_session:
+            raise ValueError("corrupt session")
+        return original_load_session(session_dir)
+
+    monkeypatch.setattr(SessionLoader, "load_session", staticmethod(fake_load_session))
+
+    with caplog.at_level(logging.WARNING, logger=logger.name):
+        prompt = build_improve_prompt(session_config=session_config)
+
+    assert "Investigate flaky session handling" in prompt
+    assert any(
+        record.getMessage() == f"Skipping corrupted session at {broken_session}"
+        and record.exc_info is not None
+        for record in caplog.records
+    )
 
 
 def test_build_improve_prompt_logs_analysis_failures(
