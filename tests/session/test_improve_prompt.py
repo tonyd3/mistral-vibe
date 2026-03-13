@@ -28,6 +28,7 @@ def create_session(
     cwd: str,
     bash_command: str | None = None,
     bash_failed: bool = False,
+    skill_invocation: dict[str, str] | None = None,
 ) -> Path:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     session_dir = session_root / f"test_{timestamp}_{session_id[:8]}"
@@ -88,7 +89,15 @@ def create_session(
         "environment": {"working_directory": cwd},
         "git_commit": None,
         "git_branch": None,
+        "skill_invocations": [],
     }
+    if skill_invocation is not None:
+        user_message_id = messages[0].message_id
+        assert user_message_id is not None
+        metadata["skill_invocations"].append({
+            "message_id": user_message_id,
+            **skill_invocation,
+        })
     (session_dir / "meta.json").write_text(
         json.dumps(metadata, indent=2), encoding="utf-8"
     )
@@ -200,6 +209,36 @@ def test_build_improve_prompt_ignores_legacy_improve_turns(
     assert "Investigate slow test startup" in prompt
     assert "old /improve output" not in prompt
     assert "legacy-improve" not in prompt
+
+
+def test_build_improve_prompt_uses_skill_invocation_preview(
+    session_config: SessionLoggingConfig,
+) -> None:
+    session_root = Path(session_config.save_dir)
+    create_session(
+        session_root,
+        "skill-session",
+        user_prompt=(
+            "---\n"
+            "name: carl\n"
+            "description: Continuously run Propel code review.\n"
+            "---\n\n"
+            "# CARL\n"
+            "Use this skill when the goal is to clear Propel review comments.\n"
+        ),
+        assistant_text="I will inspect the current review findings first.",
+        cwd="/repo/review",
+        skill_invocation={
+            "skill_name": "carl",
+            "invocation": "/carl --base main",
+            "skill_path": "/Users/tony/.codex/skills/carl/SKILL.md",
+        },
+    )
+
+    prompt = build_improve_prompt(session_config=session_config)
+
+    assert "/carl --base main (skill)" in prompt
+    assert "Continuously run Propel code review." not in prompt
 
 
 def test_build_improve_prompt_logs_corrupted_sessions(

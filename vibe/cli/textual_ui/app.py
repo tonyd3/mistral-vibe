@@ -122,6 +122,7 @@ from vibe.core.types import (
     LLMMessage,
     RateLimitError,
     Role,
+    TurnSkillInvocation,
 )
 from vibe.core.utils import (
     CancellationReason,
@@ -565,7 +566,14 @@ class VibeApp(App):  # noqa: PLR0904
         if len(parts) > 1:
             skill_content = f"{user_input}\n\n{skill_content}"
 
-        await self._handle_user_message(skill_content)
+        await self._handle_user_message(
+            skill_content,
+            skill_invocation=TurnSkillInvocation(
+                skill_name=skill_name,
+                invocation=user_input,
+                skill_path=str(skill_info.skill_path),
+            ),
+        )
         return True
 
     async def _handle_bash_command(self, command: str) -> None:
@@ -605,7 +613,10 @@ class VibeApp(App):  # noqa: PLR0904
             )
 
     async def _handle_user_message(
-        self, message: str, persist_to_session_log: bool = True
+        self,
+        message: str,
+        persist_to_session_log: bool = True,
+        skill_invocation: TurnSkillInvocation | None = None,
     ) -> None:
         user_message = UserMessage(message)
 
@@ -613,7 +624,11 @@ class VibeApp(App):  # noqa: PLR0904
 
         if not self._agent_running:
             self._agent_task = asyncio.create_task(
-                self._handle_agent_loop_turn(message, persist_to_session_log)
+                self._handle_agent_loop_turn(
+                    message,
+                    persist_to_session_log,
+                    skill_invocation=skill_invocation,
+                )
             )
 
     def _reset_ui_state(self) -> None:
@@ -710,7 +725,10 @@ class VibeApp(App):  # noqa: PLR0904
         return result
 
     async def _handle_agent_loop_turn(
-        self, prompt: str, persist_to_session_log: bool = True
+        self,
+        prompt: str,
+        persist_to_session_log: bool = True,
+        skill_invocation: TurnSkillInvocation | None = None,
     ) -> None:
         self._agent_running = True
 
@@ -725,7 +743,9 @@ class VibeApp(App):  # noqa: PLR0904
         try:
             rendered_prompt = render_path_prompt(prompt, base_dir=Path.cwd())
             async for event in self.agent_loop.act(
-                rendered_prompt, persist_to_session_log=persist_to_session_log
+                rendered_prompt,
+                persist_to_session_log=persist_to_session_log,
+                skill_invocation=skill_invocation,
             ):
                 if self.event_handler:
                     await self.event_handler.handle_event(

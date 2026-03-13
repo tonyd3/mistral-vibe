@@ -83,6 +83,7 @@ from vibe.core.types import (
     ToolCallEvent,
     ToolResultEvent,
     ToolStreamEvent,
+    TurnSkillInvocation,
     UserInputCallback,
     UserMessageEvent,
 )
@@ -280,10 +281,17 @@ class AgentLoop:
         )
 
     async def act(
-        self, msg: str, persist_to_session_log: bool = True
+        self,
+        msg: str,
+        persist_to_session_log: bool = True,
+        skill_invocation: TurnSkillInvocation | None = None,
     ) -> AsyncGenerator[BaseEvent]:
         self._clean_message_history()
-        async for event in self._conversation_loop(msg, persist_to_session_log):
+        async for event in self._conversation_loop(
+            msg,
+            persist_to_session_log,
+            skill_invocation=skill_invocation,
+        ):
             yield event
 
     @property
@@ -447,7 +455,10 @@ class AgentLoop:
         return headers
 
     async def _conversation_loop(
-        self, user_msg: str, persist_to_session_log: bool = True
+        self,
+        user_msg: str,
+        persist_to_session_log: bool = True,
+        skill_invocation: TurnSkillInvocation | None = None,
     ) -> AsyncGenerator[BaseEvent]:
         previous_persist_value = self._persist_current_turn_to_session_log
         self._persist_current_turn_to_session_log = persist_to_session_log
@@ -461,6 +472,14 @@ class AgentLoop:
 
             if user_message.message_id is None:
                 raise AgentLoopError("User message must have a message_id")
+
+            if persist_to_session_log and skill_invocation is not None:
+                self.session_logger.record_skill_invocation(
+                    message_id=user_message.message_id,
+                    skill_name=skill_invocation.skill_name,
+                    invocation=skill_invocation.invocation,
+                    skill_path=Path(skill_invocation.skill_path),
+                )
 
             yield UserMessageEvent(
                 content=user_msg, message_id=user_message.message_id

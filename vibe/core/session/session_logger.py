@@ -17,7 +17,13 @@ from vibe.core.session.session_loader import (
     METADATA_FILENAME,
     SessionLoader,
 )
-from vibe.core.types import AgentStats, LLMMessage, Role, SessionMetadata
+from vibe.core.types import (
+    AgentStats,
+    LLMMessage,
+    Role,
+    SessionMetadata,
+    SessionSkillInvocation,
+)
 from vibe.core.utils import is_windows, utc_now
 
 if TYPE_CHECKING:
@@ -135,6 +141,31 @@ class SessionLogger:
             environment={"working_directory": str(Path.cwd())},
         )
 
+    def record_skill_invocation(
+        self,
+        *,
+        message_id: str,
+        skill_name: str,
+        invocation: str,
+        skill_path: Path,
+    ) -> None:
+        if self.session_metadata is None:
+            return
+
+        invocation_entry = SessionSkillInvocation(
+            message_id=message_id,
+            skill_name=skill_name,
+            invocation=invocation,
+            skill_path=str(skill_path),
+        )
+        skill_invocations = [
+            existing
+            for existing in self.session_metadata.skill_invocations
+            if existing.message_id != message_id
+        ]
+        skill_invocations.append(invocation_entry)
+        self.session_metadata.skill_invocations = skill_invocations
+
     @staticmethod
     def _persisted_non_system_messages(
         messages: Sequence[LLMMessage],
@@ -146,6 +177,14 @@ class SessionLogger:
         ]
 
     def _get_title(self, messages: Sequence[LLMMessage]) -> str:
+        skill_invocations_by_message_id = (
+            {
+                invocation.message_id: invocation
+                for invocation in self.session_metadata.skill_invocations
+            }
+            if self.session_metadata is not None
+            else {}
+        )
         first_user_message = None
         for message in self._persisted_non_system_messages(messages):
             if message.role == Role.user:
@@ -156,7 +195,16 @@ class SessionLogger:
             title = "Untitled session"
         else:
             MAX_TITLE_LENGTH = 50
-            text = str(first_user_message.content)
+            skill_invocation = (
+                skill_invocations_by_message_id.get(first_user_message.message_id)
+                if first_user_message.message_id is not None
+                else None
+            )
+            text = (
+                skill_invocation.invocation
+                if skill_invocation is not None
+                else str(first_user_message.content)
+            )
             title = text[:MAX_TITLE_LENGTH]
             if len(text) > MAX_TITLE_LENGTH:
                 title += "…"

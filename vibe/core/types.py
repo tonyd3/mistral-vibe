@@ -127,6 +127,19 @@ class SessionInfo(BaseModel):
     save_dir: str
 
 
+class SessionSkillInvocation(BaseModel):
+    message_id: str
+    skill_name: str
+    invocation: str
+    skill_path: str
+
+
+class TurnSkillInvocation(BaseModel):
+    skill_name: str
+    invocation: str
+    skill_path: str
+
+
 class SessionMetadata(BaseModel):
     session_id: str
     start_time: str
@@ -135,6 +148,7 @@ class SessionMetadata(BaseModel):
     git_branch: str | None
     environment: dict[str, str | None]
     username: str
+    skill_invocations: list[SessionSkillInvocation] = Field(default_factory=list)
 
 
 class ClientMetadata(BaseModel):

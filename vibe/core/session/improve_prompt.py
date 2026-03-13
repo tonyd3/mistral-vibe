@@ -9,7 +9,7 @@ from typing import Any
 from vibe.core.config import SessionLoggingConfig
 from vibe.core.logger import logger
 from vibe.core.session.session_loader import MESSAGES_FILENAME, SessionLoader
-from vibe.core.types import LLMMessage, Role
+from vibe.core.types import LLMMessage, Role, SessionSkillInvocation
 from vibe.core.utils import CANCELLATION_TAG, TOOL_ERROR_TAG, TaggedText
 
 
@@ -60,23 +60,31 @@ class SessionAnalysis:
         )
         fallback_preview = metadata.get("title")
         bash_calls_by_id: dict[str, str] = {}
+        skill_invocations = skill_invocations_by_message_id(metadata)
         skip_turn = False
 
         for message in messages:
             match message.role:
                 case Role.user:
-                    if (
-                        text := extract_message_text(message)
-                    ) is not None and is_improve_generated_prompt(text):
+                    text = extract_message_text(message)
+                    if text is not None and is_improve_generated_prompt(text):
                         skip_turn = True
                         continue
                     skip_turn = False
                     analysis.user_messages += 1
                     if (
                         analysis.preview == NO_PREVIEW
-                        and text is not None
+                        and (
+                            preview := preview_text(
+                                text,
+                                skill_invocations.get(message.message_id)
+                                if message.message_id is not None
+                                else None,
+                            )
+                        )
+                        is not None
                     ):
-                        analysis.preview = shorten(text, PREVIEW_CHAR_LIMIT)
+                        analysis.preview = preview
                 case Role.assistant:
                     if skip_turn:
                         continue
@@ -533,6 +541,36 @@ def extract_message_text(message: LLMMessage) -> str | None:
         return None
     text = collapse_whitespace(message.content)
     return text or None
+
+
+def skill_invocations_by_message_id(
+    metadata: dict[str, Any],
+) -> dict[str, SessionSkillInvocation]:
+    raw_skill_invocations = metadata.get("skill_invocations")
+    if not isinstance(raw_skill_invocations, list):
+        return {}
+
+    skill_invocations: dict[str, SessionSkillInvocation] = {}
+    for item in raw_skill_invocations:
+        try:
+            invocation = SessionSkillInvocation.model_validate(item)
+        except ValueError:
+            continue
+        skill_invocations[invocation.message_id] = invocation
+    return skill_invocations
+
+
+def preview_text(
+    text: str | None, skill_invocation: SessionSkillInvocation | None
+) -> str | None:
+    if skill_invocation is not None:
+        if invocation := collapse_whitespace(skill_invocation.invocation):
+            return shorten(f"{invocation} (skill)", PREVIEW_CHAR_LIMIT)
+        return f"/{skill_invocation.skill_name} (skill)"
+
+    if text is None:
+        return None
+    return shorten(text, PREVIEW_CHAR_LIMIT)
 
 
 def tool_message_tag(content: str) -> str:
