@@ -112,6 +112,7 @@ from vibe.core.tools.builtins.ask_user_question import (
     Choice,
     Question,
 )
+from vibe.core.tools.builtins.bash import BashArgs
 from vibe.core.types import (
     AgentStats,
     ApprovalResponse,
@@ -407,8 +408,10 @@ class VibeApp(App):  # noqa: PLR0904
     async def on_approval_app_approval_granted_always_tool(
         self, message: ApprovalApp.ApprovalGrantedAlwaysTool
     ) -> None:
-        self._set_tool_permission_always(
-            message.tool_name, save_permanently=message.save_permanently
+        self._persist_tool_approval_selection(
+            message.tool_name,
+            message.tool_args,
+            save_permanently=message.save_permanently,
         )
 
         if self._pending_approval and not self._pending_approval.done():
@@ -499,9 +502,18 @@ class VibeApp(App):  # noqa: PLR0904
             for widget in children[:compact_index]:
                 await widget.remove()
 
-    def _set_tool_permission_always(
-        self, tool_name: str, save_permanently: bool = False
+    def _persist_tool_approval_selection(
+        self,
+        tool_name: str,
+        tool_args: BaseModel,
+        save_permanently: bool = False,
     ) -> None:
+        if tool_name == "bash" and isinstance(tool_args, BashArgs):
+            if self.agent_loop.allow_bash_command_pattern(
+                tool_args, save_permanently=save_permanently
+            ):
+                return
+
         self.agent_loop.set_tool_permission(
             tool_name, ToolPermission.ALWAYS, save_permanently
         )

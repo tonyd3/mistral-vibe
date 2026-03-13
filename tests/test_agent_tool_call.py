@@ -14,6 +14,7 @@ from vibe.core.agent_loop import AgentLoop
 from vibe.core.agents.models import BuiltinAgentName
 from vibe.core.config import VibeConfig
 from vibe.core.tools.base import BaseToolConfig, ToolPermission
+from vibe.core.tools.builtins.bash import BashArgs, BashToolConfig
 from vibe.core.tools.builtins.todo import TodoItem
 from vibe.core.types import (
     ApprovalResponse,
@@ -351,6 +352,53 @@ async def test_approval_always_sets_tool_permission_for_subsequent_calls() -> No
     assert events2[3].result is not None
     assert agent_loop.stats.tool_calls_rejected == 0
     assert agent_loop.stats.tool_calls_succeeded == 2
+
+
+def test_allow_bash_command_pattern_preserves_default_permission() -> None:
+    agent_loop = build_test_agent_loop(
+        config=build_test_vibe_config(
+            system_prompt_id="tests",
+            include_project_context=False,
+            include_prompt_detail=False,
+        )
+    )
+
+    allowed = agent_loop.allow_bash_command_pattern(
+        BashArgs(
+            command="uv run pytest tests/tools/test_bash.py -q",
+            command_pattern=["uv", "run", "pytest"],
+        )
+    )
+
+    bash_config = agent_loop.tool_manager.get_tool_config("bash")
+
+    assert allowed is True
+    assert isinstance(bash_config, BashToolConfig)
+    assert bash_config.permission is ToolPermission.ASK
+    assert "uv run pytest" in bash_config.command_patterns
+
+
+def test_allow_bash_command_pattern_rejects_non_matching_pattern() -> None:
+    agent_loop = build_test_agent_loop(
+        config=build_test_vibe_config(
+            system_prompt_id="tests",
+            include_project_context=False,
+            include_prompt_detail=False,
+        )
+    )
+
+    allowed = agent_loop.allow_bash_command_pattern(
+        BashArgs(
+            command="uv run pytest tests/tools/test_bash.py -q",
+            command_pattern=["npm", "test"],
+        )
+    )
+
+    bash_config = agent_loop.tool_manager.get_tool_config("bash")
+
+    assert allowed is False
+    assert isinstance(bash_config, BashToolConfig)
+    assert bash_config.command_patterns == []
 
 
 @pytest.mark.asyncio

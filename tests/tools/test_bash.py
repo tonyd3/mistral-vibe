@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
 
 from tests.mock.utils import collect_result
 from vibe.core.tools.base import BaseToolState, ToolError, ToolPermission
@@ -89,3 +90,30 @@ def test_resolve_permission():
     assert denylisted is ToolPermission.NEVER
     assert mixed is None
     assert empty is None
+
+
+def test_command_pattern_requires_non_empty_tokens() -> None:
+    with pytest.raises(ValidationError, match="command_pattern"):
+        BashArgs(command="echo hello", command_pattern=["", "   "])
+
+
+def test_matches_command_pattern_requires_all_command_segments() -> None:
+    assert Bash.matches_command_pattern(
+        "git status && git diff --stat", ["git"]
+    )
+    assert not Bash.matches_command_pattern("git status && whoami", ["git"])
+
+
+def test_resolve_permission_uses_command_patterns() -> None:
+    config = BashToolConfig(command_patterns=["uv run pytest"])
+    bash_tool = Bash(config=config, state=BaseToolState())
+
+    allowed = bash_tool.resolve_permission(
+        BashArgs(command="uv run pytest tests/tools/test_bash.py -q")
+    )
+    denied = bash_tool.resolve_permission(
+        BashArgs(command="uv run python script.py")
+    )
+
+    assert allowed is ToolPermission.ALWAYS
+    assert denied is None
