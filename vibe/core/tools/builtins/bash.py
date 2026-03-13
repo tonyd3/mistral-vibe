@@ -94,7 +94,10 @@ def _parse_stored_command_pattern(command_pattern: str) -> list[str] | None:
     except ValueError:
         return None
 
-    return _normalize_command_pattern(tokens)
+    try:
+        return _normalize_command_pattern(tokens)
+    except ValueError:
+        return None
 
 
 def _matches_command_pattern(command: str, command_pattern: list[str]) -> bool:

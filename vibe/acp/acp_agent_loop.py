@@ -310,9 +310,13 @@ class VibeAcpAgentLoop(AcpAgent):
                         if session.agent_loop.allow_bash_command_pattern(args):
                             return (ApprovalResponse.YES, None)
 
-                    session.agent_loop.set_tool_permission(
-                        tool_name, ToolPermission.ALWAYS
-                    )
+                    try:
+                        session.agent_loop.set_tool_permission(
+                            tool_name, ToolPermission.ALWAYS
+                        )
+                    except Exception as e:
+                        # Handle any unexpected errors when setting tool permission
+                        return (ApprovalResponse.NO, f"Failed to set tool permission: {str(e)}")
                     return (ApprovalResponse.YES, None)
                 case ToolOption.REJECT_ONCE:
                     return (

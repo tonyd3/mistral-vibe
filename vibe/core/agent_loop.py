@@ -268,7 +268,7 @@ class AgentLoop:
 
         if save_permanently:
             VibeConfig.save_updates({
-                "tools": {"bash": {"command_patterns": [rendered_pattern]}}
+                "tools": {"bash": {"command_patterns": updated_config.command_patterns}}
             })
 
         self.tool_manager.invalidate_tool("bash")
