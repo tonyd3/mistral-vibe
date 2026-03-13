@@ -11,7 +11,7 @@ from textual.widgets import Static
 from vibe.cli.textual_ui.ansi_markdown import AnsiMarkdown as Markdown
 from vibe.cli.textual_ui.widgets.no_markup_static import NoMarkupStatic
 from vibe.core.tools.builtins.ask_user_question import AskUserQuestionResult
-from vibe.core.tools.builtins.bash import BashArgs, BashResult
+from vibe.core.tools.builtins.bash import Bash, BashArgs, BashResult
 from vibe.core.tools.builtins.grep import GrepArgs, GrepResult
 from vibe.core.tools.builtins.read_file import ReadFileArgs, ReadFileResult
 from vibe.core.tools.builtins.search_replace import (
@@ -127,6 +127,13 @@ class ToolResultWidget[TResult: BaseModel](Static):
 
 class BashApprovalWidget(ToolApprovalWidget[BashArgs]):
     def compose(self) -> ComposeResult:
+        if self.args.command_pattern:
+            pattern = Bash.render_command_pattern(self.args.command_pattern)
+            yield NoMarkupStatic(
+                f"command_pattern: {pattern}", classes="approval-description"
+            )
+            yield NoMarkupStatic("")
+
         yield Markdown(f"```bash\n{self.args.command}\n```")
 
 

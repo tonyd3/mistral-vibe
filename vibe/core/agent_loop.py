@@ -57,6 +57,7 @@ from vibe.core.tools.base import (
     ToolPermission,
     ToolPermissionError,
 )
+from vibe.core.tools.builtins.bash import Bash, BashArgs, BashToolConfig
 from vibe.core.tools.manager import ToolManager
 from vibe.core.tools.mcp import MCPRegistry
 from vibe.core.tools.mcp_sampling import MCPSamplingHandler
@@ -238,6 +239,40 @@ class AgentLoop:
 
         self.config.tools[tool_name].permission = permission
         self.tool_manager.invalidate_tool(tool_name)
+
+    def allow_bash_command_pattern(
+        self, args: BashArgs, save_permanently: bool = False
+    ) -> bool:
+        if not args.command_pattern:
+            return False
+
+        if not Bash.matches_command_pattern(args.command, args.command_pattern):
+            return False
+
+        rendered_pattern = Bash.render_command_pattern(args.command_pattern)
+        bash_config = self.tool_manager.get_tool_config("bash")
+        if not isinstance(bash_config, BashToolConfig):
+            return False
+
+        updated_config = bash_config
+        if rendered_pattern not in bash_config.command_patterns:
+            updated_config = bash_config.model_copy(
+                update={
+                    "command_patterns": [
+                        *bash_config.command_patterns,
+                        rendered_pattern,
+                    ]
+                }
+            )
+        self.config.tools["bash"] = updated_config
+
+        if save_permanently:
+            VibeConfig.save_updates({
+                "tools": {"bash": {"command_patterns": updated_config.command_patterns}}
+            })
+
+        self.tool_manager.invalidate_tool("bash")
+        return True
 
     def emit_new_session_telemetry(self) -> None:
         entrypoint = (

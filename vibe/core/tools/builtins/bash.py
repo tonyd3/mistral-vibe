@@ -4,11 +4,12 @@ import asyncio
 from collections.abc import AsyncGenerator
 from functools import lru_cache
 import os
+import shlex
 import signal
 import sys
 from typing import ClassVar, Literal, final
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from tree_sitter import Language, Node, Parser
 import tree_sitter_bash as tsbash
 
@@ -54,6 +55,61 @@ def _extract_commands(command: str) -> list[str]:
 
     find_commands(tree.root_node)
     return commands
+
+
+def _parse_command_tokens(command: str) -> list[list[str]]:
+    command_parts = _extract_commands(command)
+    tokenized_commands: list[list[str]] = []
+
+    for part in command_parts:
+        try:
+            tokens = shlex.split(part)
+        except ValueError:
+            continue
+
+        if tokens:
+            tokenized_commands.append(tokens)
+
+    return tokenized_commands
+
+
+def _normalize_command_pattern(command_pattern: list[str] | None) -> list[str] | None:
+    if command_pattern is None:
+        return None
+
+    normalized = [token.strip() for token in command_pattern if token.strip()]
+    if not normalized:
+        raise ValueError("command_pattern must include at least one non-empty token")
+
+    return normalized
+
+
+def _render_command_pattern(command_pattern: list[str]) -> str:
+    return shlex.join(command_pattern)
+
+
+def _parse_stored_command_pattern(command_pattern: str) -> list[str] | None:
+    try:
+        tokens = shlex.split(command_pattern)
+    except ValueError:
+        return None
+
+    try:
+        return _normalize_command_pattern(tokens)
+    except ValueError:
+        return None
+
+
+def _matches_command_pattern(command: str, command_pattern: list[str]) -> bool:
+    tokenized_commands = _parse_command_tokens(command)
+    if not tokenized_commands:
+        return False
+
+    return all(
+        len(command_tokens) >= len(command_pattern)
+        and command_tokens[: len(command_pattern)] == command_pattern
+        for command_tokens in tokenized_commands
+    )
 
 
 def _get_subprocess_encoding() -> str:
@@ -177,6 +233,10 @@ class BashToolConfig(BaseToolConfig):
         default_factory=_get_default_allowlist,
         description="Command prefixes that are automatically allowed",
     )
+    command_patterns: list[str] = Field(
+        default_factory=list,
+        description="Tokenized command prefixes that are automatically allowed",
+    )
     denylist: list[str] = Field(
         default_factory=_get_default_denylist,
         description="Command prefixes that are automatically denied",
@@ -189,9 +249,23 @@ class BashToolConfig(BaseToolConfig):
 
 class BashArgs(BaseModel):
     command: str
+    command_pattern: list[str] | None = Field(
+        default=None,
+        description=(
+            "Optional tokenized command prefix for reusable approval, "
+            'for example ["uv", "run", "pytest"].'
+        ),
+    )
     timeout: int | None = Field(
         default=None, description="Override the default command timeout."
     )
+
+    @field_validator("command_pattern")
+    @classmethod
+    def _validate_command_pattern(
+        cls, value: list[str] | None
+    ) -> list[str] | None:
+        return _normalize_command_pattern(value)
 
 
 class BashResult(BaseModel):
@@ -224,11 +298,31 @@ class Bash(
     def get_status_text(cls) -> str:
         return "Running command"
 
+    @classmethod
+    def render_command_pattern(cls, command_pattern: list[str]) -> str:
+        normalized = _normalize_command_pattern(command_pattern)
+        if normalized is None:
+            raise ValueError("command_pattern is required")
+
+        return _render_command_pattern(normalized)
+
+    @classmethod
+    def matches_command_pattern(cls, command: str, command_pattern: list[str]) -> bool:
+        if is_windows():
+            return False
+
+        normalized = _normalize_command_pattern(command_pattern)
+        if normalized is None:
+            return False
+
+        return _matches_command_pattern(command, normalized)
+
     def resolve_permission(self, args: BashArgs) -> ToolPermission | None:
         if is_windows():
             return None
 
         command_parts = _extract_commands(args.command)
+        tokenized_commands = _parse_command_tokens(args.command)
         if not command_parts:
             return None
 
@@ -255,13 +349,35 @@ class Bash(
         def is_allowlisted(command: str) -> bool:
             return any(command.startswith(pattern) for pattern in self.config.allowlist)
 
+        def matches_allowlisted_command_pattern(command_tokens: list[str]) -> bool:
+            return any(
+                len(command_tokens) >= len(pattern_tokens)
+                and command_tokens[: len(pattern_tokens)] == pattern_tokens
+                for pattern_tokens in (
+                    _parse_stored_command_pattern(pattern)
+                    for pattern in self.config.command_patterns
+                )
+                if pattern_tokens is not None
+            )
+
         for part in command_parts:
             if is_denylisted(part):
                 return ToolPermission.NEVER
             if is_standalone_denylisted(part):
                 return ToolPermission.NEVER
 
-        if all(is_allowlisted(part) for part in command_parts):
+        if len(tokenized_commands) != len(command_parts):
+            return (
+                ToolPermission.ALWAYS
+                if all(is_allowlisted(part) for part in command_parts)
+                else None
+            )
+
+        if all(
+            is_allowlisted(part)
+            or matches_allowlisted_command_pattern(command_tokens)
+            for part, command_tokens in zip(command_parts, tokenized_commands, strict=True)
+        ):
             return ToolPermission.ALWAYS
 
         return None

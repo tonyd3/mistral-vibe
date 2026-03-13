@@ -8,6 +8,11 @@ Use the `bash` tool to run one-off shell commands.
 - When `timeout` is not specified (or set to `None`), the config default is used
 - If a command is timing out, do not hesitate to increase the timeout using the `timeout` argument
 
+**Reusable approvals:**
+- If you want "always allow" to apply only to a narrow family of commands, set `command_pattern` to a tokenized prefix such as `["uv", "run", "pytest"]`
+- Only set `command_pattern` when it clearly matches the command you are running
+- Do not set `command_pattern` for compound shell commands unless the same prefix covers every command segment
+
 **IMPORTANT: Use dedicated tools if available instead of these bash commands:**
 
 **File Operations - DO NOT USE:**

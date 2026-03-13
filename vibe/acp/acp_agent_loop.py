@@ -91,7 +91,8 @@ from vibe.core.proxy_setup import (
     unset_proxy_var,
 )
 from vibe.core.session.session_loader import SessionLoader
-from vibe.core.tools.base import BaseToolConfig, ToolPermission
+from vibe.core.tools.base import ToolPermission
+from vibe.core.tools.builtins.bash import BashArgs
 from vibe.core.types import (
     ApprovalResponse,
     AssistantEvent,
@@ -299,17 +300,23 @@ class VibeAcpAgentLoop(AcpAgent):
         session = self._get_session(session_id)
 
         def _handle_permission_selection(
-            option_id: str, tool_name: str
+            option_id: str, tool_name: str, args: BaseModel
         ) -> tuple[ApprovalResponse, str | None]:
             match option_id:
                 case ToolOption.ALLOW_ONCE:
                     return (ApprovalResponse.YES, None)
                 case ToolOption.ALLOW_ALWAYS:
-                    if tool_name not in session.agent_loop.config.tools:
-                        session.agent_loop.config.tools[tool_name] = BaseToolConfig()
-                    session.agent_loop.config.tools[
-                        tool_name
-                    ].permission = ToolPermission.ALWAYS
+                    if tool_name == "bash" and isinstance(args, BashArgs):
+                        if session.agent_loop.allow_bash_command_pattern(args):
+                            return (ApprovalResponse.YES, None)
+
+                    try:
+                        session.agent_loop.set_tool_permission(
+                            tool_name, ToolPermission.ALWAYS
+                        )
+                    except Exception as e:
+                        # Handle any unexpected errors when setting tool permission
+                        return (ApprovalResponse.NO, f"Failed to set tool permission: {str(e)}")
                     return (ApprovalResponse.YES, None)
                 case ToolOption.REJECT_ONCE:
                     return (
@@ -332,7 +339,7 @@ class VibeAcpAgentLoop(AcpAgent):
             # Parse the response using isinstance for proper type narrowing
             if response.outcome.outcome == "selected":
                 outcome = cast(AllowedOutcome, response.outcome)
-                return _handle_permission_selection(outcome.option_id, tool_name)
+                return _handle_permission_selection(outcome.option_id, tool_name, args)
             else:
                 return (
                     ApprovalResponse.NO,
