@@ -4,6 +4,7 @@ import asyncio
 from enum import StrEnum, auto
 import os
 from pathlib import Path
+import shlex
 import signal
 import subprocess
 import time
@@ -514,33 +515,58 @@ class VibeApp(App):  # noqa: PLR0904
                 )
             await self._mount_and_scroll(UserMessage(user_input))
             handler = getattr(self, command.handler)
+            handler_args = (
+                (self.commands.get_command_args(user_input),)
+                if command.accepts_arguments
+                else ()
+            )
             if asyncio.iscoroutinefunction(handler):
-                await handler()
+                await handler(*handler_args)
             else:
-                handler()
+                handler(*handler_args)
             return True
         return False
 
-    async def _install_skill(self) -> None:
+    async def _install_skill(self, command_args: str) -> None:
         """Handle the installation of a skill from a repository."""
-        await self._mount_and_scroll(UserCommandMessage("Installing skill..."))
+        try:
+            install_args = shlex.split(command_args)
+        except ValueError as exc:
+            await self._mount_and_scroll(
+                ErrorMessage(
+                    f"Invalid install-skill arguments: {exc}",
+                    collapsed=self._tools_collapsed,
+                )
+            )
+            return
 
-        repo_url = "https://github.com/propel-gtm/propel-code-skills.git"  # Default for testing
-        skill_name = None  # Install all skills by default
+        match install_args:
+            case [repo_url]:
+                skill_name = None
+            case [repo_url, skill_name]:
+                pass
+            case _:
+                await self._mount_and_scroll(
+                    ErrorMessage(
+                        "Usage: /install-skill <repo_url> [skill_name]",
+                        collapsed=self._tools_collapsed,
+                    )
+                )
+                return
+
+        await self._mount_and_scroll(UserCommandMessage("Installing skill..."))
 
         from vibe.core.skills.installer import install_skill
 
-        success = await asyncio.to_thread(install_skill, repo_url, skill_name)
-        if success:
+        result = await asyncio.to_thread(install_skill, repo_url, skill_name)
+        if result.success:
             await self._mount_and_scroll(
-                UserCommandMessage(
-                    "Skill installed successfully. Restart the application to use it."
-                )
+                UserCommandMessage(result.message)
             )
         else:
             await self._mount_and_scroll(
                 ErrorMessage(
-                    "Failed to install skill. Check the repository URL and skill name.",
+                    result.message,
                     collapsed=self._tools_collapsed,
                 )
             )
