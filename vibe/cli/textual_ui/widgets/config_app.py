@@ -55,7 +55,9 @@ class ConfigApp(Container):
                 "key": "active_model",
                 "label": "Model",
                 "type": "cycle",
-                "options": [m.alias for m in self.config.models],
+                "options": [
+                    model_id for model_id, _ in self.config.get_selectable_models()
+                ],
             },
             {
                 "key": "autocopy_to_clipboard",

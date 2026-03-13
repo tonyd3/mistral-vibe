@@ -27,7 +27,7 @@ from vibe.core.types import CompactEndEvent, CompactStartEvent, LLMMessage
 from vibe.core.utils import compact_reduction_display
 
 if TYPE_CHECKING:
-    from vibe.core.config import ModelConfig
+    from vibe.core.config import VibeConfig
 
 
 class ToolOption(StrEnum):
@@ -103,16 +103,16 @@ def make_mode_response(
 
 
 def make_model_response(
-    models: list[ModelConfig], current_model_id: str
+    config: VibeConfig, current_model_id: str
 ) -> tuple[SessionModelState, SessionConfigOption]:
     model_infos: list[ModelInfo] = []
     config_options: list[SessionConfigSelectOption] = []
 
-    for model in models:
-        model_infos.append(ModelInfo(model_id=model.alias, name=model.alias))
+    for model_id, description in config.get_selectable_models():
+        model_infos.append(ModelInfo(model_id=model_id, name=model_id))
         config_options.append(
             SessionConfigSelectOption(
-                value=model.alias, name=model.alias, description=model.name
+                value=model_id, name=model_id, description=description
             )
         )
 

@@ -13,6 +13,7 @@ import pytest
 from tests.conftest import build_test_agent_loop, build_test_vibe_config
 from tests.mock.utils import mock_llm_chunk
 from tests.stubs.fake_backend import FakeBackend
+from vibe.core.agents.models import BuiltinAgentName
 from vibe.core.config import Backend, ModelConfig, ProviderConfig, VibeConfig
 from vibe.core.types import EntrypointMetadata
 
@@ -185,3 +186,40 @@ async def test_mcp_sampling_handler_uses_updated_config_when_agent_config_change
     result2 = await handler(context, params)
     assert isinstance(result2, CreateMessageResult)
     assert result2.model == "devstral-small-latest"
+
+
+def test_plan_agent_resolves_auto_model_to_reasoning_route() -> None:
+    config = build_test_vibe_config(
+        active_model="auto",
+        models=[
+            ModelConfig(
+                name="mistral-vibe-cli-latest",
+                provider="mistral",
+                alias="devstral-latest",
+                input_price=0.4,
+                output_price=2.0,
+            ),
+            ModelConfig(
+                name="mistral-large-latest",
+                provider="mistral",
+                alias="mistral-large",
+                input_price=3.0,
+                output_price=9.0,
+            ),
+        ],
+        providers=[
+            ProviderConfig(
+                name="mistral",
+                api_base="https://api.mistral.ai/v1",
+                api_key_env_var="MISTRAL_API_KEY",
+                backend=Backend.MISTRAL,
+            )
+        ],
+    )
+
+    agent = build_test_agent_loop(config=config, agent_name=BuiltinAgentName.PLAN)
+
+    assert agent.config.active_model == "auto"
+    assert agent._get_active_model().alias == "mistral-large"
+    assert agent.stats.input_price_per_million == 3.0
+    assert agent.stats.output_price_per_million == 9.0

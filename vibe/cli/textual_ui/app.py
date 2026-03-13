@@ -321,7 +321,9 @@ class VibeApp(App):  # noqa: PLR0904
 
         def update_context_progress(stats: AgentStats) -> None:
             context_progress.tokens = TokenState(
-                max_tokens=self.config.get_active_model().auto_compact_threshold,
+                max_tokens=self.agent_loop.config.get_active_model(
+                    self.agent_loop.agent_profile.name
+                ).auto_compact_threshold,
                 current_tokens=stats.context_tokens,
             )
 
