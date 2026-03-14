@@ -10,7 +10,7 @@ from tests.conftest import build_test_vibe_config
 from vibe.acp.acp_agent_loop import VibeAcpAgentLoop
 from vibe.core.agent_loop import AgentLoop
 from vibe.core.agents.models import BuiltinAgentName
-from vibe.core.config import ModelConfig, VibeConfig
+from vibe.core.config import AUTO_MODEL_ALIAS, ModelConfig, VibeConfig
 
 
 @pytest.fixture
@@ -283,6 +283,28 @@ class TestACPSetConfigOptionModel:
 
             assert response is None
             mock_save.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_set_config_option_model_to_auto(
+        self, acp_agent_loop: VibeAcpAgentLoop
+    ) -> None:
+        session_response = await acp_agent_loop.new_session(
+            cwd=str(Path.cwd()), mcp_servers=[]
+        )
+        session_id = session_response.session_id
+        acp_session = next(
+            (s for s in acp_agent_loop.sessions.values() if s.id == session_id), None
+        )
+        assert acp_session is not None
+
+        response = await acp_agent_loop.set_config_option(
+            session_id=session_id, config_id="model", value=AUTO_MODEL_ALIAS
+        )
+
+        assert response is not None
+        assert acp_session.agent_loop.config.active_model == AUTO_MODEL_ALIAS
+        assert response.config_options is not None
+        assert response.config_options[1].root.current_value == AUTO_MODEL_ALIAS
 
 
 class TestACPSetConfigOptionInvalidConfigId:

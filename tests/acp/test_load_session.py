@@ -18,7 +18,7 @@ from tests.stubs.fake_client import FakeClient
 from vibe.acp.acp_agent_loop import VibeAcpAgentLoop
 from vibe.core.agent_loop import AgentLoop
 from vibe.core.agents.models import BuiltinAgentName
-from vibe.core.config import ModelConfig, SessionLoggingConfig
+from vibe.core.config import AUTO_MODEL_ALIAS, ModelConfig, SessionLoggingConfig
 from vibe.core.types import Role
 
 
@@ -79,13 +79,15 @@ class TestLoadSession:
 
         assert response is not None
         assert response.models is not None
-        assert len(response.models.available_models) == 2
+        assert len(response.models.available_models) == 3
 
         assert response.models.current_model_id == "devstral-latest"
-        assert response.models.available_models[0].model_id == "devstral-latest"
-        assert response.models.available_models[0].name == "devstral-latest"
-        assert response.models.available_models[1].model_id == "devstral-small"
-        assert response.models.available_models[1].name == "devstral-small"
+        assert response.models.available_models[0].model_id == AUTO_MODEL_ALIAS
+        assert response.models.available_models[0].name == AUTO_MODEL_ALIAS
+        assert response.models.available_models[1].model_id == "devstral-latest"
+        assert response.models.available_models[1].name == "devstral-latest"
+        assert response.models.available_models[2].model_id == "devstral-small"
+        assert response.models.available_models[2].name == "devstral-small"
 
         assert response.modes is not None
         assert response.modes.current_mode_id == BuiltinAgentName.DEFAULT
@@ -117,11 +119,15 @@ class TestLoadSession:
         assert response.config_options[1].root.id == "model"
         assert response.config_options[1].root.category == "model"
         assert response.config_options[1].root.current_value == "devstral-latest"
-        assert len(response.config_options[1].root.options) == 2
+        assert len(response.config_options[1].root.options) == 3
         model_option_values = {
             opt.value for opt in response.config_options[1].root.options
         }
-        assert model_option_values == {"devstral-latest", "devstral-small"}
+        assert model_option_values == {
+            AUTO_MODEL_ALIAS,
+            "devstral-latest",
+            "devstral-small",
+        }
 
     @pytest.mark.asyncio
     async def test_load_session_registers_session_with_original_id(

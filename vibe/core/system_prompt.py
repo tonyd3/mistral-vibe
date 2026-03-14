@@ -252,7 +252,18 @@ def get_universal_system_prompt(
         sections.append(_add_commit_signature())
 
     if config.include_model_info:
-        sections.append(f"Your model name is: `{config.active_model}`")
+        try:
+            active_model = config.get_active_model(agent_manager.active_profile.name)
+        except ValueError:
+            sections.append(f"Your model name is: `{config.active_model}`")
+        else:
+            if config.active_model == "auto":
+                sections.append(
+                    "Your selected model is `auto`, which resolves to "
+                    f"`{active_model.name}` for this session."
+                )
+            else:
+                sections.append(f"Your model name is: `{active_model.name}`")
 
     if config.include_prompt_detail:
         sections.append(_get_os_system_prompt())

@@ -16,7 +16,7 @@ from pydantic import BaseModel
 from vibe.cli.terminal_setup import detect_terminal
 from vibe.core.agents.manager import AgentManager
 from vibe.core.agents.models import AgentProfile, BuiltinAgentName
-from vibe.core.config import Backend, ProviderConfig, VibeConfig
+from vibe.core.config import Backend, ModelConfig, ProviderConfig, VibeConfig
 from vibe.core.llm.backend.factory import BACKEND_FACTORY
 from vibe.core.llm.exceptions import BackendError
 from vibe.core.llm.format import (
@@ -186,7 +186,7 @@ class AgentLoop:
 
         self.stats = AgentStats()
         try:
-            active_model = config.get_active_model()
+            active_model = self._get_active_model()
             self.stats.input_price_per_million = active_model.input_price
             self.stats.output_price_per_million = active_model.output_price
         except ValueError:
@@ -224,6 +224,12 @@ class AgentLoop:
     @property
     def auto_approve(self) -> bool:
         return self.config.auto_approve
+
+    def _get_active_model(self) -> ModelConfig:
+        return self.config.get_active_model(self.agent_profile.name)
+
+    def _get_provider_for_active_model(self) -> ProviderConfig:
+        return self.config.get_provider_for_model(self._get_active_model())
 
     def set_tool_permission(
         self, tool_name: str, permission: ToolPermission, save_permanently: bool = False
@@ -264,8 +270,8 @@ class AgentLoop:
         )
 
     def _select_backend(self) -> BackendLike:
-        active_model = self.config.get_active_model()
-        provider = self.config.get_provider_for_model(active_model)
+        active_model = self._get_active_model()
+        provider = self._get_provider_for_active_model()
         timeout = self.config.api_timeout
         return BACKEND_FACTORY[provider.backend](provider=provider, timeout=timeout)
 
@@ -348,7 +354,7 @@ class AgentLoop:
         if self._max_price is not None:
             self.middleware_pipeline.add(PriceLimitMiddleware(self._max_price))
 
-        active_model = self.config.get_active_model()
+        active_model = self._get_active_model()
         if active_model.auto_compact_threshold > 0:
             self.middleware_pipeline.add(
                 AutoCompactMiddleware(active_model.auto_compact_threshold)
@@ -397,7 +403,7 @@ class AgentLoop:
                     "old_tokens", self.stats.context_tokens
                 )
                 threshold = result.metadata.get(
-                    "threshold", self.config.get_active_model().auto_compact_threshold
+                    "threshold", self._get_active_model().auto_compact_threshold
                 )
                 tool_call_id = str(uuid4())
 
@@ -715,8 +721,8 @@ class AgentLoop:
         )
 
     async def _chat(self, max_tokens: int | None = None) -> LLMChunk:
-        active_model = self.config.get_active_model()
-        provider = self.config.get_provider_for_model(active_model)
+        active_model = self._get_active_model()
+        provider = self._get_provider_for_active_model()
 
         available_tools = self.format_handler.get_available_tools(self.tool_manager)
         tool_choice = self.format_handler.get_tool_choice()
@@ -760,8 +766,8 @@ class AgentLoop:
     async def _chat_streaming(
         self, max_tokens: int | None = None
     ) -> AsyncGenerator[LLMChunk]:
-        active_model = self.config.get_active_model()
-        provider = self.config.get_provider_for_model(active_model)
+        active_model = self._get_active_model()
+        provider = self._get_provider_for_active_model()
 
         available_tools = self.format_handler.get_available_tools(self.tool_manager)
         tool_choice = self.format_handler.get_tool_choice()
@@ -961,7 +967,7 @@ class AgentLoop:
         self.stats.trigger_listeners()
 
         try:
-            active_model = self.config.get_active_model()
+            active_model = self._get_active_model()
             self.stats.update_pricing(
                 active_model.input_price, active_model.output_price
             )
@@ -1002,8 +1008,8 @@ class AgentLoop:
             summary_message = LLMMessage(role=Role.user, content=summary_content)
             self.messages.reset([system_message, summary_message])
 
-            active_model = self.config.get_active_model()
-            provider = self.config.get_provider_for_model(active_model)
+            active_model = self._get_active_model()
+            provider = self._get_provider_for_active_model()
 
             actual_context_tokens = await self.backend.count_tokens(
                 model=active_model,
@@ -1096,7 +1102,7 @@ class AgentLoop:
             self.stats.reset_context_state()
 
         try:
-            active_model = self.config.get_active_model()
+            active_model = self._get_active_model()
             self.stats.update_pricing(
                 active_model.input_price, active_model.output_price
             )

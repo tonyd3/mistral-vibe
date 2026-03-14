@@ -267,7 +267,7 @@ class VibeAcpAgentLoop(AcpAgent):
             session.agent_loop.agent_profile.name,
         )
         models_state, models_config = make_model_response(
-            agent_loop.config.models, agent_loop.config.active_model
+            agent_loop.config, agent_loop.config.active_model
         )
 
         return NewSessionResponse(
@@ -480,7 +480,7 @@ class VibeAcpAgentLoop(AcpAgent):
             session.agent_loop.agent_profile.name,
         )
         models_state, models_config = make_model_response(
-            agent_loop.config.models, agent_loop.config.active_model
+            agent_loop.config, agent_loop.config.active_model
         )
 
         return LoadSessionResponse(
@@ -506,8 +506,7 @@ class VibeAcpAgentLoop(AcpAgent):
         return True
 
     async def _apply_model_change(self, session: AcpSessionLoop, model_id: str) -> bool:
-        model_aliases = [model.alias for model in session.agent_loop.config.models]
-        if model_id not in model_aliases:
+        if not session.agent_loop.config.is_model_selectable(model_id):
             return False
 
         VibeConfig.save_updates({"active_model": model_id})
@@ -565,7 +564,7 @@ class VibeAcpAgentLoop(AcpAgent):
             profiles, session.agent_loop.agent_profile.name
         )
         _, models_config = make_model_response(
-            session.agent_loop.config.models, session.agent_loop.config.active_model
+            session.agent_loop.config, session.agent_loop.config.active_model
         )
 
         return SetSessionConfigOptionResponse(

@@ -9,7 +9,7 @@ from tests.acp.conftest import _create_acp_agent
 from tests.conftest import build_test_vibe_config
 from vibe.acp.acp_agent_loop import VibeAcpAgentLoop
 from vibe.core.agent_loop import AgentLoop
-from vibe.core.config import ModelConfig, VibeConfig
+from vibe.core.config import AUTO_MODEL_ALIAS, ModelConfig, VibeConfig
 from vibe.core.types import LLMMessage, Role
 
 
@@ -196,6 +196,27 @@ class TestACPSetModel:
         assert (
             acp_session.agent_loop.config.get_active_model().alias == "devstral-small"
         )
+
+    @pytest.mark.asyncio
+    async def test_set_model_to_auto(
+        self, acp_agent_loop: VibeAcpAgentLoop
+    ) -> None:
+        session_response = await acp_agent_loop.new_session(
+            cwd=str(Path.cwd()), mcp_servers=[]
+        )
+        session_id = session_response.session_id
+        acp_session = next(
+            (s for s in acp_agent_loop.sessions.values() if s.id == session_id), None
+        )
+        assert acp_session is not None
+
+        response = await acp_agent_loop.set_session_model(
+            session_id=session_id, model_id=AUTO_MODEL_ALIAS
+        )
+
+        assert response is not None
+        assert acp_session.agent_loop.config.active_model == AUTO_MODEL_ALIAS
+        assert acp_session.agent_loop.config.get_active_model().alias == "devstral-latest"
 
     @pytest.mark.asyncio
     async def test_set_model_calls_reload_with_initial_messages(

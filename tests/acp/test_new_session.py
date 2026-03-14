@@ -10,7 +10,7 @@ from tests.conftest import build_test_vibe_config
 from vibe.acp.acp_agent_loop import VibeAcpAgentLoop
 from vibe.core.agent_loop import AgentLoop
 from vibe.core.agents.models import BuiltinAgentName
-from vibe.core.config import ModelConfig
+from vibe.core.config import AUTO_MODEL_ALIAS, ModelConfig
 
 
 @pytest.fixture
@@ -73,13 +73,15 @@ class TestACPNewSession:
         assert session_response.models is not None
         assert session_response.models.current_model_id is not None
         assert session_response.models.available_models is not None
-        assert len(session_response.models.available_models) == 2
+        assert len(session_response.models.available_models) == 3
 
         assert session_response.models.current_model_id == "devstral-latest"
-        assert session_response.models.available_models[0].model_id == "devstral-latest"
-        assert session_response.models.available_models[0].name == "devstral-latest"
-        assert session_response.models.available_models[1].model_id == "devstral-small"
-        assert session_response.models.available_models[1].name == "devstral-small"
+        assert session_response.models.available_models[0].model_id == AUTO_MODEL_ALIAS
+        assert session_response.models.available_models[0].name == AUTO_MODEL_ALIAS
+        assert session_response.models.available_models[1].model_id == "devstral-latest"
+        assert session_response.models.available_models[1].name == "devstral-latest"
+        assert session_response.models.available_models[2].model_id == "devstral-small"
+        assert session_response.models.available_models[2].name == "devstral-small"
 
         assert session_response.modes is not None
         assert session_response.modes.current_mode_id is not None
@@ -121,9 +123,13 @@ class TestACPNewSession:
         assert model_config.root.id == "model"
         assert model_config.root.category == "model"
         assert model_config.root.current_value == "devstral-latest"
-        assert len(model_config.root.options) == 2
+        assert len(model_config.root.options) == 3
         model_option_values = {opt.value for opt in model_config.root.options}
-        assert model_option_values == {"devstral-latest", "devstral-small"}
+        assert model_option_values == {
+            AUTO_MODEL_ALIAS,
+            "devstral-latest",
+            "devstral-small",
+        }
 
     @pytest.mark.skip(reason="TODO: Fix this test")
     @pytest.mark.asyncio

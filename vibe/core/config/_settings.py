@@ -248,6 +248,35 @@ class ModelConfig(BaseModel):
         return data
 
 
+AUTO_MODEL_ALIAS = "auto"
+
+
+class ModelUseCase(StrEnum):
+    GENERAL = auto()
+    REASONING = auto()
+
+
+AUTO_MODEL_DESCRIPTION = "Route internally based on use case"
+
+_AUTO_GENERAL_MODEL = ModelConfig(
+    name="mistral-vibe-cli-latest",
+    provider="mistral",
+    alias="devstral-2",
+    input_price=0.4,
+    output_price=2.0,
+)
+_AUTO_REASONING_MODEL = ModelConfig(
+    name="mistral-large-latest",
+    provider="mistral",
+    alias="mistral-large",
+    thinking="medium",
+)
+_AUTO_MODEL_DEFAULTS: dict[ModelUseCase, tuple[ModelConfig, ...]] = {
+    ModelUseCase.GENERAL: (_AUTO_GENERAL_MODEL,),
+    ModelUseCase.REASONING: (_AUTO_REASONING_MODEL, _AUTO_GENERAL_MODEL),
+}
+
+
 DEFAULT_MISTRAL_API_ENV_KEY = "MISTRAL_API_KEY"
 
 
@@ -429,13 +458,70 @@ class VibeConfig(BaseSettings):
             self.system_prompt_id, *(str(d) for d in prompt_dirs)
         )
 
-    def get_active_model(self) -> ModelConfig:
-        for model in self.models:
-            if model.alias == self.active_model:
-                return model
-        raise ValueError(
-            f"Active model '{self.active_model}' not found in configuration."
+    def get_selectable_models(self) -> list[tuple[str, str]]:
+        return [
+            (AUTO_MODEL_ALIAS, AUTO_MODEL_DESCRIPTION),
+            *[
+                (model.alias, model.name)
+                for model in self.models
+                if model.alias != AUTO_MODEL_ALIAS
+            ],
+        ]
+
+    def is_model_selectable(self, model_id: str) -> bool:
+        return any(
+            candidate_id == model_id
+            for candidate_id, _ in self.get_selectable_models()
         )
+
+    def resolve_model(
+        self, model_id: str, agent_name: str | None = None
+    ) -> ModelConfig:
+        match model_id:
+            case _ if model_id == AUTO_MODEL_ALIAS:
+                return self._resolve_auto_model(agent_name)
+            case _:
+                if model := self._find_model(model_id):
+                    return model
+
+        raise ValueError(f"Active model '{model_id}' not found in configuration.")
+
+    def get_active_model(self, agent_name: str | None = None) -> ModelConfig:
+        return self.resolve_model(self.active_model, agent_name=agent_name)
+
+    def _resolve_auto_model(self, agent_name: str | None) -> ModelConfig:
+        use_case = self._get_model_use_case(agent_name)
+        if use_case is ModelUseCase.GENERAL and self.models:
+            return self.models[0]
+
+        for candidate in _AUTO_MODEL_DEFAULTS[use_case]:
+            if configured := self._find_model(candidate.alias):
+                return configured
+            if configured := self._find_model(candidate.name):
+                return configured
+            if self._has_provider(candidate.provider):
+                return candidate
+
+        if self.models:
+            return self.models[0]
+
+        raise ValueError("No models are configured for active_model='auto'.")
+
+    def _get_model_use_case(self, agent_name: str | None) -> ModelUseCase:
+        match agent_name:
+            case "plan":
+                return ModelUseCase.REASONING
+            case _:
+                return ModelUseCase.GENERAL
+
+    def _find_model(self, model_ref: str) -> ModelConfig | None:
+        for model in self.models:
+            if model.alias == model_ref or model.name == model_ref:
+                return model
+        return None
+
+    def _has_provider(self, provider_name: str) -> bool:
+        return any(provider.name == provider_name for provider in self.providers)
 
     def get_provider_for_model(self, model: ModelConfig) -> ProviderConfig:
         for provider in self.providers:

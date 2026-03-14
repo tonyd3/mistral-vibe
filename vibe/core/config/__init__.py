@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from vibe.core.config._settings import (
+    AUTO_MODEL_ALIAS,
+    AUTO_MODEL_DESCRIPTION,
     DEFAULT_MISTRAL_API_ENV_KEY,
     DEFAULT_MODELS,
     DEFAULT_PROVIDERS,
@@ -21,6 +23,8 @@ from vibe.core.config._settings import (
 )
 
 __all__ = [
+    "AUTO_MODEL_ALIAS",
+    "AUTO_MODEL_DESCRIPTION",
     "DEFAULT_MISTRAL_API_ENV_KEY",
     "DEFAULT_MODELS",
     "DEFAULT_PROVIDERS",

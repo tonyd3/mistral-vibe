@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from tests.conftest import build_test_vibe_config
-from vibe.core.config import ModelConfig
+from vibe.core.config import AUTO_MODEL_ALIAS, ModelConfig
 from vibe.core.config.harness_files import (
     HarnessFilesManager,
     init_harness_files_manager,
@@ -119,3 +119,50 @@ class TestAutoCompactThresholdFallback:
             auto_compact_threshold=75_000, models=[model], active_model="m"
         )
         assert cfg2.get_active_model().auto_compact_threshold == 75_000
+
+
+class TestAutoModelRouting:
+    def test_selectable_models_include_auto(self) -> None:
+        cfg = build_test_vibe_config()
+
+        selectable = cfg.get_selectable_models()
+
+        assert selectable[0] == (AUTO_MODEL_ALIAS, "Route internally based on use case")
+
+    def test_auto_general_route_prefers_default_general_model(self) -> None:
+        cfg = build_test_vibe_config(active_model=AUTO_MODEL_ALIAS)
+
+        model = cfg.get_active_model()
+
+        assert model.alias == "devstral-latest"
+        assert model.name == "mistral-vibe-cli-latest"
+
+    def test_auto_plan_route_prefers_reasoning_model(self) -> None:
+        cfg = build_test_vibe_config(active_model=AUTO_MODEL_ALIAS)
+
+        model = cfg.get_active_model("plan")
+
+        assert model.name == "mistral-large-latest"
+        assert model.provider == "mistral"
+
+    def test_auto_plan_route_uses_configured_reasoning_model_when_present(self) -> None:
+        reasoning_model = ModelConfig(
+            name="custom-large",
+            provider="mistral",
+            alias="mistral-large",
+            input_price=3.5,
+            output_price=11.0,
+        )
+        cfg = build_test_vibe_config(
+            active_model=AUTO_MODEL_ALIAS,
+            models=[
+                ModelConfig(name="small", provider="mistral", alias="small"),
+                reasoning_model,
+            ],
+        )
+
+        model = cfg.get_active_model("plan")
+
+        assert model.alias == reasoning_model.alias
+        assert model.input_price == reasoning_model.input_price
+        assert model.output_price == reasoning_model.output_price

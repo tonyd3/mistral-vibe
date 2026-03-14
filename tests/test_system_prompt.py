@@ -5,6 +5,7 @@ import sys
 import pytest
 
 from tests.conftest import build_test_vibe_config
+from vibe.core.agents.models import BuiltinAgentName
 from vibe.core.agents import AgentManager
 from vibe.core.skills.manager import SkillManager
 from vibe.core.system_prompt import get_universal_system_prompt
@@ -42,3 +43,24 @@ def test_get_universal_system_prompt_includes_windows_prompt_on_windows(
     assert "Use: backslashes (\\\\) for paths" in prompt
     assert "Check command availability with: `where command` (Windows)" in prompt
     assert "Script shebang: Not applicable on Windows" in prompt
+
+
+def test_get_universal_system_prompt_resolves_auto_model_for_plan() -> None:
+    config = build_test_vibe_config(
+        active_model="auto",
+        system_prompt_id="tests",
+        include_project_context=False,
+        include_prompt_detail=False,
+        include_model_info=True,
+        include_commit_signature=False,
+    )
+    tool_manager = ToolManager(lambda: config)
+    skill_manager = SkillManager(lambda: config)
+    agent_manager = AgentManager(lambda: config, initial_agent=BuiltinAgentName.PLAN)
+
+    prompt = get_universal_system_prompt(
+        tool_manager, config, skill_manager, agent_manager
+    )
+
+    assert "Your selected model is `auto`" in prompt
+    assert "`mistral-large-latest`" in prompt
